@@ -1,0 +1,6 @@
+name: xrenmap
+channels:
+  - conda-forge
+dependencies:
+  - netcdf4
+  - xarray
