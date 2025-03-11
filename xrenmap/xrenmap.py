@@ -45,7 +45,7 @@ class EnmapEntrypoint(xr.backends.BackendEntrypoint):
         drop_variables: str | Iterable[str] | None = None,
     ) -> xr.Dataset:
         self.temp_dir = tempfile.mkdtemp(prefix="xrenmap-")
-        ds = process(filename_or_obj, self.temp_dir)
+        ds = read_dataset_from_archive(filename_or_obj, self.temp_dir)
         ds.set_close(self.close)
         return ds
 
@@ -54,15 +54,9 @@ class EnmapEntrypoint(xr.backends.BackendEntrypoint):
             shutil.rmtree(self.temp_dir)
 
 
-def process(
-    input_filename: str,
-    temp_dir: str,
-):
-    return convert(input_filename, temp_dir)
-
-
-def convert(
-    input_filename: str, temp_dir: str) -> xr.Dataset:
+def read_dataset_from_archive(
+    input_filename: str, temp_dir: str
+) -> xr.Dataset:
     data_dirs = list(extract_archives(input_filename, temp_dir))
     if len(data_dirs) > 1:
         LOGGER.warning("Multiple data archives found; reading the first.")
@@ -72,9 +66,7 @@ def convert(
 def read_dataset_from_directory(data_dir):
     LOGGER.info(f"Processing {data_dir}")
     arrays = {
-        name: rioxarray.open_rasterio(
-            data_dir / (filename + ".TIF")
-        ).squeeze()
+        name: rioxarray.open_rasterio(data_dir / (filename + ".TIF")).squeeze()
         for name, filename in VAR_MAP.items()
     }
     ds = xr.Dataset(arrays)
