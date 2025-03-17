@@ -45,7 +45,15 @@ class EnmapEntrypoint(xr.backends.BackendEntrypoint):
         drop_variables: str | Iterable[str] | None = None,
     ) -> xr.Dataset:
         self.temp_dir = tempfile.mkdtemp(prefix="xrenmap-")
-        ds = read_dataset_from_archive(filename_or_obj, self.temp_dir)
+        path = pathlib.Path(filename_or_obj)
+        if path.is_file():
+            ds = read_dataset_from_archive(filename_or_obj, self.temp_dir)
+        elif path.is_dir():
+            ds = read_dataset_from_directory(path)
+        elif filename_or_obj.startswith("s3://"):
+            ds = read_dataset_from_directory(filename_or_obj)
+        else:
+            raise ValueError(f"{filename_or_obj} is neither a path nor a directory.")
         ds.set_close(self.close)
         return ds
 
@@ -66,7 +74,7 @@ def read_dataset_from_archive(
 def read_dataset_from_directory(data_dir):
     LOGGER.info(f"Processing {data_dir}")
     arrays = {
-        name: rioxarray.open_rasterio(data_dir / (filename + ".TIF")).squeeze()
+        name: rioxarray.open_rasterio(str(data_dir) + "/" + (filename + ".TIF")).squeeze()
         for name, filename in VAR_MAP.items()
     }
     ds = xr.Dataset(arrays)
@@ -75,8 +83,13 @@ def read_dataset_from_directory(data_dir):
 
 
 def add_metadata(ds: xr.Dataset, data_dir: pathlib.Path):
-    root = xml.etree.ElementTree.parse(data_dir / "METADATA.XML").getroot()
-
+    if str(data_dir).startswith("s3://"):
+        import fsspec
+        fs = fsspec.filesystem("s3")
+        with fs.open(str(data_dir) + "/" + "METADATA.XML") as fh:
+            root = xml.etree.ElementTree.parse(fh).getroot()
+    else:
+        root = xml.etree.ElementTree.parse(str(data_dir) +  "/" + "METADATA.XML").getroot()
     points = root.findall("base/spatialCoverage/boundingPolygon/point")
     bounds = shapely.Polygon(
         [float(p.find("longitude").text), p.find("latitude").text]
