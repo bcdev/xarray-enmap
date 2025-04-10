@@ -17,12 +17,19 @@ keywords = [
   "analysis ready data", "data science", "datacube", "xarray", "zarr"
 ]
 readme = {file = "README.md", content-type = "text/markdown"}
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
 requires-python = ">=3.10"
 dependencies = [
   "rioxarray",
   "shapely",
   "xarray",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+    "Topic :: Scientific/Engineering"
 ]
 
 [tool.setuptools.dynamic]
@@ -55,6 +62,7 @@ Documentation = "https://github.com/xcube-dev/xarray_enmap/blob/main/README.md"
 Issues = "https://github.com/xcube-dev/xarray_enmap/issues"
 Changelog = "https://github.com/xcube-dev/xarray_enmap/blob/main/CHANGES.md"
 Repository = "https://github.com/xcube-dev/xarray_enmap"
+Homepage = "https://github.com/xcube-dev/xarray_enmap"
 
 [project.entry-points."xarray.backends"]
 enmap = "xarray_enmap.xarray_enmap:EnmapEntrypoint"
