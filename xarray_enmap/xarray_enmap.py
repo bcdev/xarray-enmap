@@ -44,7 +44,7 @@ class EnmapEntrypoint(xr.backends.BackendEntrypoint):
         *,
         drop_variables: str | Iterable[str] | None = None,
     ) -> xr.Dataset:
-        self.temp_dir = tempfile.mkdtemp(prefix="xrenmap-")
+        self.temp_dir = tempfile.mkdtemp(prefix="xarray-enmap-")
         path = pathlib.Path(filename_or_obj)
         if path.is_file():
             ds = read_dataset_from_archive(filename_or_obj, self.temp_dir)

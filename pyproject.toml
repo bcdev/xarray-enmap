@@ -5,7 +5,7 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "xrenmap"
+name = "xarray-enmap"
 dynamic = ["version"]
 authors = [
   {name = "Pontus Lurcock", email = "pontus.lurcock@brockmann-consult.de"}
@@ -26,7 +26,7 @@ dependencies = [
 ]
 
 [tool.setuptools.dynamic]
-version = {attr = "xrenmap.__version__"}
+version = {attr = "xarray_enmap.__version__"}
 
 [tool.setuptools.packages.find]
 exclude = [
@@ -51,10 +51,10 @@ doc = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/xcube-dev/xrenmap/blob/main/README.md"
-Issues = "https://github.com/xcube-dev/xrenmap/issues"
-Changelog = "https://github.com/xcube-dev/xrenmap/blob/main/CHANGES.md"
-Repository = "https://github.com/xcube-dev/xrenmap"
+Documentation = "https://github.com/xcube-dev/xarray_enmap/blob/main/README.md"
+Issues = "https://github.com/xcube-dev/xarray_enmap/issues"
+Changelog = "https://github.com/xcube-dev/xarray_enmap/blob/main/CHANGES.md"
+Repository = "https://github.com/xcube-dev/xarray_enmap"
 
 [project.entry-points."xarray.backends"]
-enmap = "xrenmap.xrenmap:EnmapEntrypoint"
+enmap = "xarray_enmap.xarray_enmap:EnmapEntrypoint"

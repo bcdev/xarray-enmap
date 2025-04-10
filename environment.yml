@@ -1,4 +1,4 @@
-name: xrenmap
+name: xarray-enmap
 channels:
   - conda-forge
 dependencies:
