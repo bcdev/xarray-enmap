@@ -50,8 +50,14 @@ enmap_dataset = xr.open_dataset(
 )
 ```
 
-The path can be to either a `.tar.gz` archive as provided by the EnMAP portal,
-or to a directory containing the extracted archive contents.
+The supplied path can reference:
 
-If the archive or directory contains multiple EnMAP products, xarray-enmap
-will open only the first. This will be improved in a future version.
+- a `.tar.gz` archive as provided by the EnMAP portal, containing one or
+  more EnMAP products in `.ZIP` sub-archives, or
+- a `.ZIP` archive containing a single product, as found within an EnMAP
+  `.tar.gz` archive, or
+- a directory contained the unpacked contents of either of the aforementioned
+  archive types.
+
+At present, if the archive or directory contains multiple EnMAP products,
+xarray-enmap will open only the first.

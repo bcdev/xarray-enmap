@@ -53,7 +53,9 @@ class EnmapEntrypoint(xr.backends.BackendEntrypoint):
         elif filename_or_obj.startswith("s3://"):
             ds = read_dataset_from_directory(filename_or_obj)
         else:
-            raise ValueError(f"{filename_or_obj} is neither a path nor a directory.")
+            raise ValueError(
+                f"{filename_or_obj} is neither a path nor a directory."
+            )
         ds.set_close(self.close)
         return ds
 
@@ -74,7 +76,9 @@ def read_dataset_from_archive(
 def read_dataset_from_directory(data_dir):
     LOGGER.info(f"Processing {data_dir}")
     arrays = {
-        name: rioxarray.open_rasterio(str(data_dir) + "/" + (filename + ".TIF")).squeeze()
+        name: rioxarray.open_rasterio(
+            str(data_dir) + "/" + (filename + ".TIF")
+        ).squeeze()
         for name, filename in VAR_MAP.items()
     }
     ds = xr.Dataset(arrays)
@@ -85,11 +89,14 @@ def read_dataset_from_directory(data_dir):
 def add_metadata(ds: xr.Dataset, data_dir: pathlib.Path):
     if str(data_dir).startswith("s3://"):
         import fsspec
+
         fs = fsspec.filesystem("s3")
         with fs.open(str(data_dir) + "/" + "METADATA.XML") as fh:
             root = xml.etree.ElementTree.parse(fh).getroot()
     else:
-        root = xml.etree.ElementTree.parse(str(data_dir) +  "/" + "METADATA.XML").getroot()
+        root = xml.etree.ElementTree.parse(
+            str(data_dir) + "/" + "METADATA.XML"
+        ).getroot()
     points = root.findall("base/spatialCoverage/boundingPolygon/point")
     bounds = shapely.Polygon(
         [float(p.find("longitude").text), p.find("latitude").text]
@@ -179,40 +186,27 @@ def extract_archives(
     archive_path: os.PathLike | str, dest_dir: os.PathLike | str
 ) -> Iterable[pathlib.Path]:
     dest_path = pathlib.Path(dest_dir)
+    inner_path = dest_path / "inner-archive"
+    final_path = dest_path / "data"
+    os.mkdir(final_path)
     archive_path = pathlib.Path(archive_path)
     if archive_path.name.endswith(".tar.gz"):
-        # An EnMAP tgz usually contains one or more zip archives
-        # containing the actual data files.
+        # An EnMAP tgz usually contains one or more zip archives containing
+        # the actual data files.
         outer_path = dest_path / "outer-archive"
         LOGGER.info(f"Extracting {archive_path.name}")
         with tarfile.open(archive_path) as tgz_file:
             tgz_file.extractall(path=outer_path, filter="data")
-    else:
-        # Assume it's a zip and skip the outer archive
-        # extraction step.
-        LOGGER.info(f"Assuming {archive_path} is an inner zipfile")
-        outer_path = archive_path.parent
-    inner_path = dest_path / "inner-archive"
-
-    data_paths = []
-    final_path = dest_path / "data"
-    os.mkdir(final_path)
-    for index, path_to_zip_file in enumerate(find_zips(outer_path)):
-        LOGGER.info(f"Extracting {path_to_zip_file.name}")
-        extract_path = inner_path / str(index)
-        with zipfile.ZipFile(path_to_zip_file, "r") as zip_ref:
-            zip_ref.extractall(extract_path)
-        input_data_path = list(extract_path.iterdir())[0]
-        input_data_dir = input_data_path.name
-        output_data_path = final_path / input_data_dir
-        data_paths.append(output_data_path)
-        prefix_length = len(input_data_path.name) + 1
-        os.mkdir(output_data_path)
-        for filepath in input_data_path.iterdir():
-            os.rename(
-                filepath, output_data_path / filepath.name[prefix_length:]
+        data_paths = []
+        for index, path_to_zip_file in enumerate(find_zips(outer_path)):
+            data_paths.append(
+                extract_zip(final_path, index, inner_path, path_to_zip_file)
             )
-    return data_paths
+        return data_paths
+    else:
+        # Assume it's a zip and skip the outer archive extraction step.
+        LOGGER.info(f"Assuming {archive_path} is an inner zipfile")
+        return [(extract_zip(final_path, 0, inner_path, archive_path))]
 
 
 def find_zips(root: os.PathLike):
@@ -221,3 +215,23 @@ def find_zips(root: os.PathLike):
         for filename in files:
             if filename.endswith(".ZIP"):
                 yield pathlib.Path(parent, filename)
+
+
+def extract_zip(
+    final_path: pathlib.Path,
+    index: int,
+    inner_path: pathlib.Path,
+    path_to_zip_file: pathlib.Path,
+) -> pathlib.Path:
+    LOGGER.info(f"Extracting {path_to_zip_file.name}")
+    extract_path = inner_path / str(index)
+    with zipfile.ZipFile(path_to_zip_file, "r") as zip_ref:
+        zip_ref.extractall(extract_path)
+    input_data_path = list(extract_path.iterdir())[0]
+    input_data_dir = input_data_path.name
+    output_data_path = final_path / input_data_dir
+    prefix_length = len(input_data_path.name) + 1
+    os.mkdir(output_data_path)
+    for filepath in input_data_path.iterdir():
+        os.rename(filepath, output_data_path / filepath.name[prefix_length:])
+    return output_data_path
