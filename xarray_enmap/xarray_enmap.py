@@ -1,7 +1,7 @@
 # Copyright (c) 2025 by Brockmann Consult GmbH
 # Permissions are hereby granted under the terms of the MIT License:
 # https://opensource.org/licenses/MIT.
-
+import re
 from collections.abc import Iterable
 import logging
 import os
@@ -10,7 +10,7 @@ import rioxarray
 import shutil
 import tarfile
 import tempfile
-from typing import Any
+from typing import Any, Mapping
 import xml.etree
 import zipfile
 
@@ -73,30 +73,43 @@ def read_dataset_from_archive(
     return read_dataset_from_directory(data_dirs[0])
 
 
-def read_dataset_from_directory(data_dir):
-    LOGGER.info(f"Processing {data_dir}")
+def read_dataset_from_directory(data_dir: str | os.PathLike[Any]):
+    data_path = pathlib.Path(data_dir)
+    LOGGER.info(f"Processing {data_path}")
     arrays = {
-        name: rioxarray.open_rasterio(
-            str(data_dir) + "/" + (filename + ".TIF")
-        ).squeeze()
-        for name, filename in VAR_MAP.items()
+        name: rioxarray.open_rasterio(filename).squeeze()
+        for name, filename in find_datafiles(data_path).items()
     }
     ds = xr.Dataset(arrays)
-    add_metadata(ds, data_dir)
+    add_metadata(ds, data_path)
     return ds
 
 
+def find_datafiles(data_path: pathlib.Path) -> Mapping[str, pathlib.Path]:
+    assert data_path.is_dir()
+    tiffs = list(data_path.glob("*.TIF"))
+    result = {}
+    for name, basename in VAR_MAP.items():
+        pattern = f"(ENMAP.*)?{basename}.TIF"
+        matches = [tiff for tiff in tiffs if re.match(pattern, tiff.name)]
+        assert len(matches) > 0, f"Can't find TIFF for {name}"
+        assert len(matches) < 2, f"Too many TIFFs for {name}"
+        result[name] = matches[0]
+    return result
+
+
 def add_metadata(ds: xr.Dataset, data_dir: pathlib.Path):
+    metadata_paths = list(data_dir.glob("*METADATA.XML"))
+    assert len(metadata_paths) == 1
+    metadata_path = metadata_paths[0]
     if str(data_dir).startswith("s3://"):
         import fsspec
 
         fs = fsspec.filesystem("s3")
-        with fs.open(str(data_dir) + "/" + "METADATA.XML") as fh:
+        with fs.open(metadata_path) as fh:
             root = xml.etree.ElementTree.parse(fh).getroot()
     else:
-        root = xml.etree.ElementTree.parse(
-            str(data_dir) + "/" + "METADATA.XML"
-        ).getroot()
+        root = xml.etree.ElementTree.parse(metadata_path).getroot()
     points = root.findall("base/spatialCoverage/boundingPolygon/point")
     bounds = shapely.Polygon(
         [float(p.find("longitude").text), p.find("latitude").text]
@@ -232,6 +245,9 @@ def extract_zip(
     output_data_path = final_path / input_data_dir
     prefix_length = len(input_data_path.name) + 1
     os.mkdir(output_data_path)
+    # Strip the long, redundant prefix from the filenames. Not visible anyway
+    # via the xarray plugin, but convenient if using this function as a
+    # standalone archive extractor.
     for filepath in input_data_path.iterdir():
         os.rename(filepath, output_data_path / filepath.name[prefix_length:])
     return output_data_path
