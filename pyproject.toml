@@ -21,6 +21,7 @@ license = "MIT"
 license-files = ["LICEN[CS]E*"]
 requires-python = ">=3.11"
 dependencies = [
+  "fsspec",
   "rioxarray",
   "shapely",
   "xarray",

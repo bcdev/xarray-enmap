@@ -1,7 +1,7 @@
 # Copyright (c) 2025 by Brockmann Consult GmbH
 # Permissions are hereby granted under the terms of the MIT License:
 # https://opensource.org/licenses/MIT.
-
+import re
 from collections.abc import Iterable
 import logging
 import os
@@ -10,7 +10,7 @@ import rioxarray
 import shutil
 import tarfile
 import tempfile
-from typing import Any
+from typing import Any, Mapping
 import xml.etree
 import zipfile
 
@@ -49,9 +49,9 @@ class EnmapEntrypoint(xr.backends.BackendEntrypoint):
         if path.is_file():
             ds = read_dataset_from_archive(filename_or_obj, self.temp_dir)
         elif path.is_dir():
-            ds = read_dataset_from_directory(path)
+            ds = read_dataset_from_unknown_directory(path, self.temp_dir)
         elif filename_or_obj.startswith("s3://"):
-            ds = read_dataset_from_directory(filename_or_obj)
+            ds = read_dataset_from_inner_directory(filename_or_obj)
         else:
             raise ValueError(
                 f"{filename_or_obj} is neither a path nor a directory."
@@ -65,38 +65,67 @@ class EnmapEntrypoint(xr.backends.BackendEntrypoint):
 
 
 def read_dataset_from_archive(
-    input_filename: str, temp_dir: str
+    input_filename: str | os.PathLike[Any], temp_dir: str
 ) -> xr.Dataset:
     data_dirs = list(extract_archives(input_filename, temp_dir))
     if len(data_dirs) > 1:
         LOGGER.warning("Multiple data archives found; reading the first.")
-    return read_dataset_from_directory(data_dirs[0])
+    return read_dataset_from_inner_directory(data_dirs[0])
 
 
-def read_dataset_from_directory(data_dir):
-    LOGGER.info(f"Processing {data_dir}")
+def read_dataset_from_unknown_directory(
+    data_dir: str | os.PathLike[Any], temp_dir: str
+):
+    data_path = pathlib.Path(data_dir)
+    metadata_files = list(data_path.glob("*METADATA.XML"))
+    match len(metadata_files):
+        case 0:
+            # assume outer directory
+            return read_dataset_from_archive(data_path, temp_dir)
+        case 1:
+            # assume inner directory
+            return read_dataset_from_inner_directory(data_path)
+        case _:
+            raise RuntimeError("Too many METADATA.XML files")
+
+
+def read_dataset_from_inner_directory(data_dir: str | os.PathLike[Any]):
+    data_path = pathlib.Path(data_dir)
+    LOGGER.info(f"Processing {data_path}")
     arrays = {
-        name: rioxarray.open_rasterio(
-            str(data_dir) + "/" + (filename + ".TIF")
-        ).squeeze()
-        for name, filename in VAR_MAP.items()
+        name: rioxarray.open_rasterio(filename).squeeze()
+        for name, filename in find_datafiles(data_path).items()
     }
     ds = xr.Dataset(arrays)
-    add_metadata(ds, data_dir)
+    add_metadata(ds, data_path)
     return ds
 
 
+def find_datafiles(data_path: pathlib.Path) -> Mapping[str, pathlib.Path]:
+    assert data_path.is_dir()
+    tiffs = list(data_path.glob("*.TIF"))
+    result = {}
+    for name, basename in VAR_MAP.items():
+        pattern = f"(ENMAP.*)?{basename}.TIF"
+        matches = [tiff for tiff in tiffs if re.match(pattern, tiff.name)]
+        assert len(matches) > 0, f"Can't find TIFF for {name}"
+        assert len(matches) < 2, f"Too many TIFFs for {name}"
+        result[name] = matches[0]
+    return result
+
+
 def add_metadata(ds: xr.Dataset, data_dir: pathlib.Path):
+    metadata_paths = list(data_dir.glob("*METADATA.XML"))
+    assert len(metadata_paths) == 1
+    metadata_path = metadata_paths[0]
     if str(data_dir).startswith("s3://"):
         import fsspec
 
         fs = fsspec.filesystem("s3")
-        with fs.open(str(data_dir) + "/" + "METADATA.XML") as fh:
+        with fs.open(metadata_path) as fh:
             root = xml.etree.ElementTree.parse(fh).getroot()
     else:
-        root = xml.etree.ElementTree.parse(
-            str(data_dir) + "/" + "METADATA.XML"
-        ).getroot()
+        root = xml.etree.ElementTree.parse(metadata_path).getroot()
     points = root.findall("base/spatialCoverage/boundingPolygon/point")
     bounds = shapely.Polygon(
         [float(p.find("longitude").text), p.find("latitude").text]
@@ -190,13 +219,16 @@ def extract_archives(
     final_path = dest_path / "data"
     os.mkdir(final_path)
     archive_path = pathlib.Path(archive_path)
-    if archive_path.name.endswith(".tar.gz"):
-        # An EnMAP tgz usually contains one or more zip archives containing
-        # the actual data files.
-        outer_path = dest_path / "outer-archive"
-        LOGGER.info(f"Extracting {archive_path.name}")
-        with tarfile.open(archive_path) as tgz_file:
-            tgz_file.extractall(path=outer_path, filter="data")
+    if archive_path.name.endswith(".tar.gz") or archive_path.is_dir():
+        if archive_path.is_dir():
+            outer_path = archive_path
+        else:
+            # An EnMAP tgz usually contains one or more zip archives containing
+            # the actual data files.
+            outer_path = dest_path / "outer-archive"
+            LOGGER.info(f"Extracting {archive_path.name}")
+            with tarfile.open(archive_path) as tgz_file:
+                tgz_file.extractall(path=outer_path, filter="data")
         data_paths = []
         for index, path_to_zip_file in enumerate(find_zips(outer_path)):
             data_paths.append(
@@ -206,7 +238,7 @@ def extract_archives(
     else:
         # Assume it's a zip and skip the outer archive extraction step.
         LOGGER.info(f"Assuming {archive_path} is an inner zipfile")
-        return [(extract_zip(final_path, 0, inner_path, archive_path))]
+        return [extract_zip(final_path, 0, inner_path, archive_path)]
 
 
 def find_zips(root: os.PathLike):
@@ -232,6 +264,9 @@ def extract_zip(
     output_data_path = final_path / input_data_dir
     prefix_length = len(input_data_path.name) + 1
     os.mkdir(output_data_path)
+    # Strip the long, redundant prefix from the filenames. Not visible anyway
+    # via the xarray plugin, but convenient if using this function as a
+    # standalone archive extractor.
     for filepath in input_data_path.iterdir():
         os.rename(filepath, output_data_path / filepath.name[prefix_length:])
     return output_data_path
