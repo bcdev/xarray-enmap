@@ -1,4 +1,4 @@
-## Changes in 0.0.2 (in development)
+## Changes in 0.0.2
 
 - Handle unpacked data directories (#3)
 

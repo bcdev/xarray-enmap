@@ -36,7 +36,7 @@ mamba activate xarray-enmap
 Install xarray-enmap itself:
 
 ```bash
-pip install --no-deps editable .
+pip install --no-deps --editable .
 ```
 
 ## Usage
