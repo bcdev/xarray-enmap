@@ -29,7 +29,7 @@ dependencies = [
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Topic :: Scientific/Engineering"
 ]
 
@@ -57,6 +57,10 @@ doc = [
   "mkdocstrings",
   "mkdocstrings-python"
 ]
+zarr = [
+  "zarr<3",
+  "numcodecs"
+]
 
 [project.urls]
 Documentation = "https://github.com/xcube-dev/xarray_enmap/blob/main/README.md"
@@ -67,3 +71,6 @@ Homepage = "https://github.com/xcube-dev/xarray_enmap"
 
 [project.entry-points."xarray.backends"]
 enmap = "xarray_enmap.xarray_enmap:EnmapEntrypoint"
+
+[project.scripts]
+convert-enmap = "xarray_enmap.cli:main"
