@@ -92,7 +92,7 @@ def read_dataset_from_unknown_directory(
 
 def read_dataset_from_inner_directory(data_dir: str | os.PathLike[Any]) -> xr.Dataset:
     data_path = pathlib.Path(data_dir)
-    LOGGER.info(f"Processing {data_path}")
+    LOGGER.info(f"Opening {data_path}")
     arrays = {
         name: rioxarray.open_rasterio(filename).squeeze()
         for name, filename in find_datafiles(data_path).items()
