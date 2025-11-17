@@ -1,6 +1,7 @@
 # Copyright (c) 2025 by Brockmann Consult GmbH
 # Permissions are hereby granted under the terms of the MIT License:
 # https://opensource.org/licenses/MIT.
+
 import re
 from collections.abc import Iterable
 import logging
@@ -75,7 +76,7 @@ def read_dataset_from_archive(
 
 def read_dataset_from_unknown_directory(
     data_dir: str | os.PathLike[Any], temp_dir: str
-):
+) -> xr.Dataset:
     data_path = pathlib.Path(data_dir)
     metadata_files = list(data_path.glob("*METADATA.XML"))
     match len(metadata_files):
@@ -89,7 +90,7 @@ def read_dataset_from_unknown_directory(
             raise RuntimeError("Too many METADATA.XML files")
 
 
-def read_dataset_from_inner_directory(data_dir: str | os.PathLike[Any]):
+def read_dataset_from_inner_directory(data_dir: str | os.PathLike[Any]) -> xr.Dataset:
     data_path = pathlib.Path(data_dir)
     LOGGER.info(f"Processing {data_path}")
     arrays = {
