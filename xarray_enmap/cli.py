@@ -1,0 +1,156 @@
+# Copyright (c) 2025 by Brockmann Consult GmbH
+# Permissions are hereby granted under the terms of the MIT License:
+# https://opensource.org/licenses/MIT.
+
+import argparse
+import importlib
+import logging
+import os
+import pathlib
+import shutil
+import sys
+import tempfile
+from . import xarray_enmap
+
+LOGGER = logging.getLogger(__name__)
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="""Extract data from EnMAP archives.
+        The expected input is an Zip archive, or a .tar.gz archive
+        of multiple Zip archives, downloaded from the EnMAP portal.
+        Output can be written as TIFF, Zarr, or both.
+        """
+    )
+    parser.add_argument(
+        "input_filename",
+        type=str,
+        help="Either a Zip for a single product, "
+        "or a .tar.gz containing multiple Zips",
+    )
+    parser.add_argument(
+        "--zarr-output", type=str, help="Write Zarr output to this directory."
+    )
+    parser.add_argument(
+        "--tiff-output", type=str, help="Write TIFF output to this directory."
+    )
+    parser.add_argument(
+        "--tempdir",
+        "-t",
+        type=str,
+        help="Use specified path as temporary directory, and don't "
+        "delete it afterwards (useful for debugging)",
+    )
+    parser.add_argument(
+        "--compress",
+        "-c",
+        action="store_true",
+        help="Higher Zarr output compression. ~25%% smaller than default compression. "
+        "Compression process (but not decompression) is much slower.",
+    )
+    parser.add_argument("--verbose", "-v", action="count", default=0)
+    args = parser.parse_args()
+
+    def loglevel(verbosity):
+        match verbosity:
+            case 0:
+                return logging.WARN
+            case 1:
+                return logging.INFO
+            case _:
+                return logging.DEBUG
+
+    logging.basicConfig(level=loglevel(args.verbose))
+    LOGGER.debug("debug level!")
+
+    if args.tempdir is None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            process(
+                args.input_filename,
+                args.zarr_output,
+                args.tiff_output,
+                temp_dir,
+                args.compress,
+            )
+    else:
+        temp_dir = os.path.expanduser(args.tempdir)
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        os.mkdir(temp_dir)
+        process(
+            args.input_filename,
+            os.path.expanduser(args.output_dir),
+            temp_dir,
+            args.compress,
+            args.extract_only,
+        )
+
+
+def process(
+    input_filename: str,
+    output_dir_zarr: str,
+    output_dir_tiff: str,
+    temp_dir: str,
+    compress: bool = False,
+):
+    if output_dir_zarr is output_dir_tiff is None:
+        LOGGER.warn("No output destinations specified.")
+        LOGGER.warn(
+            "Archive will be extracted and opened but no data will be written."
+        )
+    input_path = pathlib.Path(input_filename)
+    if input_path.is_file():
+        data_dirs = list(xarray_enmap.extract_archives(input_filename, temp_dir))
+    elif input_path.is_dir():
+        metadata_files = list(input_path.glob("*METADATA.XML"))
+        match len(metadata_files):
+            case 0:
+                # assume outer directory
+                data_dirs = list(
+                    xarray_enmap.extract_archives(input_filename, temp_dir)
+                )
+            case 1:
+                # assume inner directory
+                data_dirs = [input_path]
+            case _:
+                raise RuntimeError("Too many METADATA.XML files")
+    else:
+        raise ValueError(
+            f"{input_filename} is neither a file nor a directory."
+        )
+    for data_dir in data_dirs:
+        if output_dir_tiff is not None:
+            shutil.copytree(
+                data_dir, pathlib.Path(output_dir_tiff) / data_dir.name
+            )
+        if output_dir_zarr is not None:
+            write_zarr(data_dir, output_dir_zarr, compress)
+
+
+def write_zarr(
+    data_dir, output_dir: str, compress: bool = False
+):
+    LOGGER.info(f"Writing {data_dir} to a Zarr archive...")
+    ensure_module_importable("zarr")
+    ds = xarray_enmap.read_dataset_from_inner_directory(data_dir)
+    zarr_args = {
+        "zarr_format": 2,
+        "store": pathlib.Path(output_dir) / (data_dir.name + ".zarr")
+    }
+    if compress:
+        ensure_module_importable("numcodecs")
+        import numcodecs
+        zarr_args["encoding"] = {
+            "reflectance": {
+                "compressor": numcodecs.Blosc(
+                    cname="zstd", clevel=9, shuffle=numcodecs.Blosc.SHUFFLE
+                )
+            }
+        }
+    ds.to_zarr(**zarr_args)
+
+
+def ensure_module_importable(module_name: str):
+    if importlib.util.find_spec(module_name) is None:
+        LOGGER.error(f"This functionality requires the {module_name} module.")
+        LOGGER.error(f"Please install {module_name} and try again.")
+        sys.exit(1)
