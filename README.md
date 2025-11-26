@@ -13,16 +13,24 @@ or
 
 `conda install xarray-enmap`
 
-> ⚠️ If you want to export Zarr archives using the included command-line tool
-> `convert-enmap`, also install the packages `zarr` and `numcodecs`.
+> ⚠️ Starting with release 0.0.3, xarray-enmap will include the command-line
+> tool `convert-enmap`. If you wish to use `convert-enmap`, you should also
+> install the optional packages `zarr` and `numcodecs`.
 
 ### With pip
+
+> ⚠️ xarray-enmap requires the gdal library, which cannot be installed with
+> pip. If you're working in a conda environment, you can use conda or mamba
+> to install the `libgdal-core` package before starting the pip install.
+> See the [GDAL documentation](https://gdal.org/en/stable/download.html) for
+> other installation methods.
 
 To install the basic package:
 
 `pip install xarray-enmap`
 
-If you want to export Zarr archives using the included command-line tool `convert-enmap`:
+If you want to export Zarr archives using the included command-line tool
+`convert-enmap` (available from release 0.0.3):
 
 `pip install xarray-enmap[zarr]`
 
