@@ -82,7 +82,7 @@ usage: convert-enmap [-h] [--zarr-output ZARR_OUTPUT]
                      [--compress] [--verbose]
                      input_filename
 
-Extract data from EnMAP archives. The expected input is an Zip archive, or a
+Extract data from EnMAP archives. The expected input is a Zip archive, or a
 .tar.gz archive of multiple Zip archives, downloaded from the EnMAP portal.
 Output can be written as TIFF, Zarr, or both.
 
