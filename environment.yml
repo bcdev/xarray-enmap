@@ -9,4 +9,4 @@ dependencies:
   - xarray
   # Required only for Zarr output from the CLI tool
   - numcodecs
-  - zarr <3
+  - zarr
