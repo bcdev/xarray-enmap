@@ -58,7 +58,7 @@ doc = [
   "mkdocstrings-python"
 ]
 zarr = [
-  "zarr<3",
+  "zarr",
   "numcodecs"
 ]
 
