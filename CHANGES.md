@@ -1,6 +1,7 @@
 ## Changes in 0.0.3 (under development)
 
 - Add the command-line conversion tool convert-enmap (#9)
+- Include band center wavelengths in data and/or metadata (#6)
 
 ## Changes in 0.0.2
 
