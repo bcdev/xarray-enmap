@@ -10,6 +10,9 @@ import pathlib
 import shutil
 import sys
 import tempfile
+
+import xarray
+
 from . import xarray_enmap
 
 LOGGER = logging.getLogger(__name__)
@@ -48,6 +51,13 @@ def main():
         help="Higher Zarr output compression. ~25%% smaller than default compression. "
         "Compression process (but not decompression) is much slower.",
     )
+    parser.add_argument(
+        "--open-as-datatree",
+        "-oad",
+        action="store_true",
+        help="Whether to write the data as datatree. This parameter is only considered when"
+             "the parameter zarr-output is given.",
+    )
     parser.add_argument("--verbose", "-v", action="count", default=0)
     args = parser.parse_args()
 
@@ -71,6 +81,7 @@ def main():
                 args.tiff_output,
                 temp_dir,
                 args.compress,
+                args.open_as_datatree
             )
     else:
         temp_dir = os.path.expanduser(args.tempdir)
@@ -82,6 +93,7 @@ def main():
             temp_dir,
             args.compress,
             args.extract_only,
+            args.open_as_datatree
         )
 
 
@@ -91,6 +103,7 @@ def process(
     output_dir_tiff: str,
     temp_dir: str,
     compress: bool = False,
+    open_as_datatree: bool = False
 ):
     if output_dir_zarr is output_dir_tiff is None:
         LOGGER.warn("No output destinations specified.")
@@ -117,24 +130,53 @@ def process(
         raise ValueError(
             f"{input_filename} is neither a file nor a directory."
         )
-    for data_dir in data_dirs:
-        if output_dir_tiff is not None:
-            shutil.copytree(
-                data_dir, pathlib.Path(output_dir_tiff) / data_dir.name
-            )
-        if output_dir_zarr is not None:
-            write_zarr(data_dir, output_dir_zarr, compress)
+    if output_dir_zarr is not None and open_as_datatree:
+        write_datatree_as_zarr(input_path, data_dirs, output_dir_zarr, compress)
+    else:
+        for data_dir in data_dirs:
+            if output_dir_tiff is not None:
+                shutil.copytree(
+                    data_dir, pathlib.Path(output_dir_tiff) / data_dir.name
+                )
+            if output_dir_zarr is not None:
+                write_zarr(data_dir, output_dir_zarr, compress)
 
 
 def write_zarr(
-    data_dir, output_dir: str, compress: bool = False
+    data_dir, output_dir: str, compress: bool = False, open_as_datatree: bool = False
 ):
     LOGGER.info(f"Writing {data_dir} to a Zarr archive...")
     ensure_module_importable("zarr")
     ds = xarray_enmap.read_dataset_from_inner_directory(data_dir)
+    store_path = pathlib.Path(output_dir) / (data_dir.name + ".zarr")
+    zarr_args = _get_zarr_args(compress, store_path)
+    ds.to_zarr(**zarr_args)
+
+
+def write_datatree_as_zarr(
+    input_path, data_dirs, output_dir: str, compress: bool = False
+):
+    name = input_path.name
+    LOGGER.info(f"Writing {name} to a Zarr archive...")
+    suffixes = input_path.suffixes
+    suffixes.reverse()
+    for suffix in suffixes:
+        name = name.removesuffix(suffix)
+    ensure_module_importable("zarr")
+    groups = {}
+    for data_dir in data_dirs:
+        group_name = data_dir if isinstance(data_dir, str) else data_dir.name
+        groups[group_name] = xarray_enmap.read_dataset_from_inner_directory(data_dir)
+    dt = xarray.DataTree.from_dict(groups)
+    store_path = pathlib.Path(output_dir) / (name + ".zarr")
+    zarr_args = _get_zarr_args(compress, store_path)
+    dt.to_zarr(**zarr_args)
+
+
+def _get_zarr_args(compress: bool, store_path: str):
     zarr_args = {
         "zarr_format": 2,
-        "store": pathlib.Path(output_dir) / (data_dir.name + ".zarr")
+        "store": store_path
     }
     if compress:
         ensure_module_importable("numcodecs")
@@ -146,7 +188,7 @@ def write_zarr(
                 )
             }
         }
-    ds.to_zarr(**zarr_args)
+    return zarr_args
 
 
 def ensure_module_importable(module_name: str):

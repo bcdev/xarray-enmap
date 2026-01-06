@@ -16,8 +16,10 @@ import xml.etree
 import zipfile
 
 import shapely
+import xarray
 import xarray as xr
-
+from xarray import DataTree, Dataset
+from xarray.backends import AbstractDataStore
 
 LOGGER = logging.getLogger(__name__)
 
@@ -37,6 +39,7 @@ VAR_MAP = dict(
 
 class EnmapEntrypoint(xr.backends.BackendEntrypoint):
 
+    supports_groups = True
     temp_dir = None
 
     def open_dataset(
@@ -59,6 +62,34 @@ class EnmapEntrypoint(xr.backends.BackendEntrypoint):
             )
         ds.set_close(self.close)
         return ds
+
+    def open_datatree(
+        self,
+        filename_or_obj: str | os.PathLike[Any],
+        *,
+        drop_variables: str | Iterable[str] | None = None,
+    ) -> DataTree:
+        groups = self.open_groups_as_dict(filename_or_obj, drop_variables=drop_variables)
+        dt = xarray.DataTree.from_dict(data=groups)
+        return dt
+
+    def open_groups_as_dict(
+        self,
+        filename_or_obj: str | os.PathLike[Any],
+        *,
+        drop_variables: str | Iterable[str] | None = None,
+    ) -> dict[str, Dataset]:
+        self.temp_dir = tempfile.mkdtemp(prefix="xarray-enmap-")
+        path = pathlib.Path(filename_or_obj)
+        if path.is_file():
+            groups = read_groups_from_archive(filename_or_obj, self.temp_dir)
+        elif path.is_dir():
+            groups = read_groups_from_unknown_directory(path, self.temp_dir)
+        else:
+            raise ValueError(
+                f"{filename_or_obj} is neither a path nor a directory."
+            )
+        return groups
 
     def close(self):
         if self.temp_dir:
@@ -100,6 +131,35 @@ def read_dataset_from_inner_directory(data_dir: str | os.PathLike[Any]) -> xr.Da
     ds = xr.Dataset(arrays)
     add_metadata(ds, data_path)
     return ds
+
+
+def read_groups_from_archive(
+    input_filename: str | os.PathLike[Any], temp_dir: str
+) -> dict[str, Dataset]:
+    data_dirs = list(extract_archives(input_filename, temp_dir))
+    groups = {}
+    for data_dir in data_dirs:
+        group_name = data_dir if isinstance(data_dir, str) else data_dir.name
+        groups[group_name] = read_dataset_from_inner_directory(data_dir)
+    return groups
+
+
+def read_groups_from_unknown_directory(
+    data_dir: str | os.PathLike[Any], temp_dir: str
+) -> dict[str, Dataset]:
+    data_path = pathlib.Path(data_dir)
+    metadata_files = list(data_path.glob("*METADATA.XML"))
+    match len(metadata_files):
+        case 0:
+            # assume outer directory
+            return read_groups_from_archive(data_path, temp_dir)
+        case 1:
+            # assume inner directory
+            return dict(
+                data_path=read_dataset_from_inner_directory(data_path)
+            )
+        case _:
+            raise RuntimeError("Too many METADATA.XML files")
 
 
 def find_datafiles(data_path: pathlib.Path) -> Mapping[str, pathlib.Path]:
