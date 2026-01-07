@@ -7,6 +7,8 @@ from collections.abc import Iterable
 import logging
 import os
 import pathlib
+
+import numpy as np
 import rioxarray
 import shutil
 import tarfile
@@ -97,6 +99,12 @@ def read_dataset_from_inner_directory(data_dir: str | os.PathLike[Any]) -> xr.Da
         name: rioxarray.open_rasterio(filename).squeeze()
         for name, filename in find_datafiles(data_path).items()
     }
+    if "reflectance" in arrays.keys():
+        reflectance = arrays.get("reflectance")
+        fill_value = reflectance.attrs.get("_FillValue", -32768)
+        reflectance = reflectance.astype(dtype=np.float32)
+        reflectance = xr.where(np.abs(reflectance - fill_value) > 1e-8, reflectance, np.nan)
+        arrays["reflectance"] = reflectance / 10000
     ds = xr.Dataset(arrays)
     add_metadata(ds, data_path)
     return ds
