@@ -10,6 +10,7 @@ import pathlib
 import shutil
 import sys
 import tempfile
+from collections.abc import Iterable
 
 import xarray
 
@@ -89,7 +90,7 @@ def main():
                 args.tiff_output,
                 temp_dir,
                 args.compress,
-                args.open_as_datatree
+                args.datatree,
                 scale_reflectance,
             )
     else:
@@ -102,7 +103,7 @@ def main():
             temp_dir,
             args.compress,
             args.extract_only,
-            args.open_as_datatree
+            args.datatree,
             scale_reflectance,
         )
 
@@ -113,7 +114,7 @@ def process(
     output_dir_tiff: str,
     temp_dir: str,
     compress: bool = False,
-    open_as_datatree: bool = False
+    open_as_datatree: bool = False,
     scale_reflectance: bool = True,
 ):
     if output_dir_zarr is output_dir_tiff is None:
@@ -176,7 +177,11 @@ def write_zarr(
 
 
 def write_datatree_as_zarr(
-    input_path: pathlib.Path, data_dirs: Iterable[pathlib.Path | str], output_dir: str, compress: bool = False
+    input_path: pathlib.Path,
+        data_dirs: Iterable[pathlib.Path | str],
+        output_dir: str,
+        compress: bool = False,
+        scale_reflectance: bool = True
 ):
     name = input_path.name
     LOGGER.info(f"Writing {name} to a Zarr archive...")
@@ -185,10 +190,16 @@ def write_datatree_as_zarr(
     for suffix in suffixes:
         name = name.removesuffix(suffix)
     ensure_module_importable("zarr")
+    LOGGER.info(
+        f"Using {'scaled' if scale_reflectance else 'unscaled'} "
+        f"reflectance."
+    )
     groups = {}
     for data_dir in data_dirs:
         group_name = data_dir if isinstance(data_dir, str) else data_dir.name
-        groups[group_name] = xarray_enmap.read_dataset_from_inner_directory(data_dir)
+        groups[group_name] = xarray_enmap.read_dataset_from_inner_directory(
+            data_dir, scale_reflectance
+        )
     dt = xarray.DataTree.from_dict(groups)
     store_path = pathlib.Path(output_dir) / (name + ".zarr")
     zarr_args = _get_zarr_args(compress, store_path)
