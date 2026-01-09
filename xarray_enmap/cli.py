@@ -1,4 +1,4 @@
-# Copyright (c) 2025 by Brockmann Consult GmbH
+# Copyright (c) 2025-2026 by Brockmann Consult GmbH
 # Permissions are hereby granted under the terms of the MIT License:
 # https://opensource.org/licenses/MIT.
 
@@ -35,6 +35,12 @@ def main():
         "--tiff-output", type=str, help="Write TIFF output to this directory."
     )
     parser.add_argument(
+        "--raw-reflectance",
+        "-r",
+        action="store_true",
+        help="Use raw reflectance values rather than rescaling to 0-1 range.",
+    )
+    parser.add_argument(
         "--tempdir",
         "-t",
         type=str,
@@ -50,6 +56,7 @@ def main():
     )
     parser.add_argument("--verbose", "-v", action="count", default=0)
     args = parser.parse_args()
+    scale_reflectance = not args.raw_reflectance
 
     def loglevel(verbosity):
         match verbosity:
@@ -71,6 +78,7 @@ def main():
                 args.tiff_output,
                 temp_dir,
                 args.compress,
+                scale_reflectance
             )
     else:
         temp_dir = os.path.expanduser(args.tempdir)
@@ -82,6 +90,7 @@ def main():
             temp_dir,
             args.compress,
             args.extract_only,
+            scale_reflectance
         )
 
 
@@ -91,10 +100,11 @@ def process(
     output_dir_tiff: str,
     temp_dir: str,
     compress: bool = False,
+    scale_reflectance: bool = True
 ):
     if output_dir_zarr is output_dir_tiff is None:
-        LOGGER.warn("No output destinations specified.")
-        LOGGER.warn(
+        LOGGER.warning("No output destinations specified.")
+        LOGGER.warning(
             "Archive will be extracted and opened but no data will be written."
         )
     input_path = pathlib.Path(input_filename)
@@ -123,15 +133,19 @@ def process(
                 data_dir, pathlib.Path(output_dir_tiff) / data_dir.name
             )
         if output_dir_zarr is not None:
-            write_zarr(data_dir, output_dir_zarr, compress)
+            write_zarr(data_dir, output_dir_zarr, compress, scale_reflectance)
 
 
 def write_zarr(
-    data_dir, output_dir: str, compress: bool = False
+    data_dir, output_dir: str, compress: bool = False, scale_reflectance: bool = True
 ):
     LOGGER.info(f"Writing {data_dir} to a Zarr archive...")
     ensure_module_importable("zarr")
-    ds = xarray_enmap.read_dataset_from_inner_directory(data_dir)
+    LOGGER.info(
+        f"Using {'scaled' if scale_reflectance else 'unscaled'} "
+        f"reflectance."
+    )
+    ds = xarray_enmap.read_dataset_from_inner_directory(data_dir, scale_reflectance)
     zarr_args = {
         "zarr_format": 2,
         "store": pathlib.Path(output_dir) / (data_dir.name + ".zarr")
