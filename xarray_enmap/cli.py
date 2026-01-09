@@ -55,7 +55,7 @@ def main():
         "--datatree",
         "-oad",
         action="store_true",
-        help="Whether to write the data as datatree. This parameter is only considered when"
+        help="Whether to write the data as datatree. This parameter is only considered when "
              "the parameter zarr-output is given.",
     )
     parser.add_argument("--verbose", "-v", action="count", default=0)
