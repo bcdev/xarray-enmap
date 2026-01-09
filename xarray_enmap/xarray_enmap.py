@@ -31,8 +31,11 @@ VAR_MAP = dict(
     haze="QL_QUALITY_HAZE",
     snow="QL_QUALITY_SNOW",
     testflags="QL_QUALITY_TESTFLAGS",
-    # We omit the quicklook files QL_SWIR and QL_VNIR.
+    swirquicklook="QL_SWIR",
+    vnirquicklook="QL_VNIR"
 )
+
+QUICKLOOK_VAR_NAMES = ["swirquicklook", "vnirquicklook"]
 
 
 class EnmapEntrypoint(xr.backends.BackendEntrypoint):
@@ -97,6 +100,10 @@ def read_dataset_from_inner_directory(data_dir: str | os.PathLike[Any]) -> xr.Da
         name: rioxarray.open_rasterio(filename).squeeze()
         for name, filename in find_datafiles(data_path).items()
     }
+    for quicklook_name in QUICKLOOK_VAR_NAMES:
+        if quicklook_name in arrays.keys():
+            ql = arrays.get(quicklook_name)
+            arrays[quicklook_name] = ql.rename({"band": "quicklookband"})
     ds = xr.Dataset(arrays)
     add_metadata(ds, data_path)
     return ds
