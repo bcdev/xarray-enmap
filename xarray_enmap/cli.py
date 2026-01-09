@@ -14,6 +14,7 @@ from . import xarray_enmap
 
 LOGGER = logging.getLogger(__name__)
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="""Extract data from EnMAP archives.
@@ -78,7 +79,7 @@ def main():
                 args.tiff_output,
                 temp_dir,
                 args.compress,
-                scale_reflectance
+                scale_reflectance,
             )
     else:
         temp_dir = os.path.expanduser(args.tempdir)
@@ -90,7 +91,7 @@ def main():
             temp_dir,
             args.compress,
             args.extract_only,
-            scale_reflectance
+            scale_reflectance,
         )
 
 
@@ -100,7 +101,7 @@ def process(
     output_dir_tiff: str,
     temp_dir: str,
     compress: bool = False,
-    scale_reflectance: bool = True
+    scale_reflectance: bool = True,
 ):
     if output_dir_zarr is output_dir_tiff is None:
         LOGGER.warning("No output destinations specified.")
@@ -109,7 +110,9 @@ def process(
         )
     input_path = pathlib.Path(input_filename)
     if input_path.is_file():
-        data_dirs = list(xarray_enmap.extract_archives(input_filename, temp_dir))
+        data_dirs = list(
+            xarray_enmap.extract_archives(input_filename, temp_dir)
+        )
     elif input_path.is_dir():
         metadata_files = list(input_path.glob("*METADATA.XML"))
         match len(metadata_files):
@@ -137,7 +140,10 @@ def process(
 
 
 def write_zarr(
-    data_dir, output_dir: str, compress: bool = False, scale_reflectance: bool = True
+    data_dir,
+    output_dir: str,
+    compress: bool = False,
+    scale_reflectance: bool = True,
 ):
     LOGGER.info(f"Writing {data_dir} to a Zarr archive...")
     ensure_module_importable("zarr")
@@ -145,14 +151,17 @@ def write_zarr(
         f"Using {'scaled' if scale_reflectance else 'unscaled'} "
         f"reflectance."
     )
-    ds = xarray_enmap.read_dataset_from_inner_directory(data_dir, scale_reflectance)
+    ds = xarray_enmap.read_dataset_from_inner_directory(
+        data_dir, scale_reflectance
+    )
     zarr_args = {
         "zarr_format": 2,
-        "store": pathlib.Path(output_dir) / (data_dir.name + ".zarr")
+        "store": pathlib.Path(output_dir) / (data_dir.name + ".zarr"),
     }
     if compress:
         ensure_module_importable("numcodecs")
         import numcodecs
+
         zarr_args["encoding"] = {
             "reflectance": {
                 "compressor": numcodecs.Blosc(
