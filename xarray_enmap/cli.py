@@ -53,7 +53,7 @@ def main():
     )
     parser.add_argument(
         "--datatree",
-        "-oad",
+        "-d",
         action="store_true",
         help="Whether to write the data as datatree. This parameter is only considered when "
              "the parameter zarr-output is given.",
