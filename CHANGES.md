@@ -2,6 +2,7 @@
 
 - Add the command-line conversion tool convert-enmap (#9)
 - Scale reflectance and handle nodata in reader (#8)
+- Include quicklook data (#7)
 
 ## Changes in 0.0.2
 
