@@ -1,4 +1,4 @@
-# Copyright (c) 2025 by Brockmann Consult GmbH
+# Copyright (c) 2025–2026 by Brockmann Consult GmbH
 # Permissions are hereby granted under the terms of the MIT License:
 # https://opensource.org/licenses/MIT.
 
@@ -90,7 +90,9 @@ def read_dataset_from_unknown_directory(
             raise RuntimeError("Too many METADATA.XML files")
 
 
-def read_dataset_from_inner_directory(data_dir: str | os.PathLike[Any]) -> xr.Dataset:
+def read_dataset_from_inner_directory(
+    data_dir: str | os.PathLike[Any],
+) -> xr.Dataset:
     data_path = pathlib.Path(data_dir)
     LOGGER.info(f"Opening {data_path}")
     arrays = {
@@ -116,15 +118,23 @@ def find_datafiles(data_path: pathlib.Path) -> Mapping[str, pathlib.Path]:
     return result
 
 
-def set_wavelengths_as_dimensions(ds: xr.Dataset, data_dir: pathlib.Path) -> xr.Dataset:
+def set_wavelengths_as_dimensions(
+    ds: xr.Dataset, data_dir: pathlib.Path
+) -> xr.Dataset:
     root = _open_metadata_root(data_dir)
     bandids = root.findall("specific/bandCharacterisation/bandID")
     if len(bandids) != len(ds.band):
-        LOGGER.info("Cannot retrieve wavelengths for all bands, will keep 'band' dimension.")
+        LOGGER.info(
+            "Cannot retrieve wavelengths for all bands: omitting 'wavelength' co-ordinate."
+        )
         return ds
-    wavelengths = [float(b.find("wavelengthCenterOfBand").text) for b in bandids]
-    ds = ds.rename({"band": "wavelength"})
-    ds = ds.assign_coords(wavelength=wavelengths)
+    wavelengths = [
+        float(b.find("wavelengthCenterOfBand").text) for b in bandids
+    ]
+    # ds = ds.rename({"band": "wavelength"})
+    ds = ds.assign_coords(wavelength=("band", wavelengths)).set_xindex(
+        "wavelength"
+    )
     return ds
 
 
@@ -215,7 +225,9 @@ def add_metadata(ds: xr.Dataset, data_dir: pathlib.Path):
         ds[var].attrs.update(attrs)
 
 
-def _open_metadata_root(data_dir: pathlib.Path):
+def _open_metadata_root(
+    data_dir: pathlib.Path,
+) -> xml.etree.ElementTree.Element:
     metadata_paths = list(data_dir.glob("*METADATA.XML"))
     assert len(metadata_paths) == 1
     metadata_path = metadata_paths[0]
