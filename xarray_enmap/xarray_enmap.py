@@ -133,6 +133,7 @@ def read_dataset_from_inner_directory(
         arrays["reflectance"] = reflectance / 10000
     ds = xr.Dataset(arrays)
     add_metadata(ds, data_path)
+    ds = set_wavelengths_as_dimensions(ds, data_path)
     return ds
 
 
@@ -149,18 +150,27 @@ def find_datafiles(data_path: pathlib.Path) -> Mapping[str, pathlib.Path]:
     return result
 
 
-def add_metadata(ds: xr.Dataset, data_dir: pathlib.Path):
-    metadata_paths = list(data_dir.glob("*METADATA.XML"))
-    assert len(metadata_paths) == 1
-    metadata_path = metadata_paths[0]
-    if str(data_dir).startswith("s3://"):
-        import fsspec
+def set_wavelengths_as_dimensions(
+    ds: xr.Dataset, data_dir: pathlib.Path
+) -> xr.Dataset:
+    root = _open_metadata_root(data_dir)
+    bandids = root.findall("specific/bandCharacterisation/bandID")
+    if len(bandids) != len(ds.band):
+        LOGGER.info(
+            "Cannot retrieve wavelengths for all bands: omitting 'wavelength' co-ordinate."
+        )
+        return ds
+    wavelengths = [
+        float(b.find("wavelengthCenterOfBand").text) for b in bandids
+    ]
+    ds = ds.assign_coords(wavelength=("band", wavelengths)).set_xindex(
+        "wavelength"
+    )
+    return ds
 
-        fs = fsspec.filesystem("s3")
-        with fs.open(metadata_path) as fh:
-            root = xml.etree.ElementTree.parse(fh).getroot()
-    else:
-        root = xml.etree.ElementTree.parse(metadata_path).getroot()
+
+def add_metadata(ds: xr.Dataset, data_dir: pathlib.Path):
+    root = _open_metadata_root(data_dir)
     points = root.findall("base/spatialCoverage/boundingPolygon/point")
     bounds = shapely.Polygon(
         [float(p.find("longitude").text), p.find("latitude").text]
@@ -244,6 +254,23 @@ def add_metadata(ds: xr.Dataset, data_dir: pathlib.Path):
         if len(values) > 4:
             attrs.update(values[4])
         ds[var].attrs.update(attrs)
+
+
+def _open_metadata_root(
+    data_dir: pathlib.Path,
+) -> xml.etree.ElementTree.Element:
+    metadata_paths = list(data_dir.glob("*METADATA.XML"))
+    assert len(metadata_paths) == 1
+    metadata_path = metadata_paths[0]
+    if str(data_dir).startswith("s3://"):
+        import fsspec
+
+        fs = fsspec.filesystem("s3")
+        with fs.open(metadata_path) as fh:
+            root = xml.etree.ElementTree.parse(fh).getroot()
+    else:
+        root = xml.etree.ElementTree.parse(metadata_path).getroot()
+    return root
 
 
 def extract_archives(

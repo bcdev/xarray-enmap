@@ -91,6 +91,15 @@ The supplied path can reference:
 At present, if the archive or directory contains multiple EnMAP products,
 xarray-enmap will open only the first.
 
+In addition to the standard `band` index co-ordinate containing the band number,
+xarray-enmap creates an additional `wavelength` co-ordinate which can be used
+to index by the corresponding band's centre wavelength. So you can do things
+like
+
+`enmap_dataset.reflectance.sel(wavelength=slice(950, 1000))`
+
+to select data for a particular wavelength range.
+
 ## Usage of the command-line tool `convert-enmap`
 
 Note that, to use the `--zarr-output` option, you must install the appropriate
