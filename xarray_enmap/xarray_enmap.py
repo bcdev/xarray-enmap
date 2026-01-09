@@ -1,4 +1,4 @@
-# Copyright (c) 2025–2026 by Brockmann Consult GmbH
+# Copyright (c) 2025-2026 by Brockmann Consult GmbH
 # Permissions are hereby granted under the terms of the MIT License:
 # https://opensource.org/licenses/MIT.
 
@@ -7,6 +7,8 @@ from collections.abc import Iterable
 import logging
 import os
 import pathlib
+
+import numpy as np
 import rioxarray
 import shutil
 import tarfile
@@ -47,15 +49,22 @@ class EnmapEntrypoint(xr.backends.BackendEntrypoint):
         filename_or_obj: str | os.PathLike[Any],
         *,
         drop_variables: str | Iterable[str] | None = None,
+        scale_reflectance: bool = True,
     ) -> xr.Dataset:
         self.temp_dir = tempfile.mkdtemp(prefix="xarray-enmap-")
         path = pathlib.Path(filename_or_obj)
         if path.is_file():
-            ds = read_dataset_from_archive(filename_or_obj, self.temp_dir)
+            ds = read_dataset_from_archive(
+                filename_or_obj, self.temp_dir, scale_reflectance
+            )
         elif path.is_dir():
-            ds = read_dataset_from_unknown_directory(path, self.temp_dir)
+            ds = read_dataset_from_unknown_directory(
+                path, self.temp_dir, scale_reflectance
+            )
         elif filename_or_obj.startswith("s3://"):
-            ds = read_dataset_from_inner_directory(filename_or_obj)
+            ds = read_dataset_from_inner_directory(
+                filename_or_obj, scale_reflectance
+            )
         else:
             raise ValueError(
                 f"{filename_or_obj} is neither a path nor a directory."
@@ -69,32 +78,40 @@ class EnmapEntrypoint(xr.backends.BackendEntrypoint):
 
 
 def read_dataset_from_archive(
-    input_filename: str | os.PathLike[Any], temp_dir: str
+    input_filename: str | os.PathLike[Any],
+    temp_dir: str,
+    scale_reflectance: bool = True,
 ) -> xr.Dataset:
     data_dirs = list(extract_archives(input_filename, temp_dir))
     if len(data_dirs) > 1:
         LOGGER.warning("Multiple data archives found; reading the first.")
-    return read_dataset_from_inner_directory(data_dirs[0])
+    return read_dataset_from_inner_directory(data_dirs[0], scale_reflectance)
 
 
 def read_dataset_from_unknown_directory(
-    data_dir: str | os.PathLike[Any], temp_dir: str
+    data_dir: str | os.PathLike[Any],
+    temp_dir: str,
+    scale_reflectance: bool = True,
 ) -> xr.Dataset:
     data_path = pathlib.Path(data_dir)
     metadata_files = list(data_path.glob("*METADATA.XML"))
     match len(metadata_files):
         case 0:
             # assume outer directory
-            return read_dataset_from_archive(data_path, temp_dir)
+            return read_dataset_from_archive(
+                data_path, temp_dir, scale_reflectance
+            )
         case 1:
             # assume inner directory
-            return read_dataset_from_inner_directory(data_path)
+            return read_dataset_from_inner_directory(
+                data_path, scale_reflectance
+            )
         case _:
             raise RuntimeError("Too many METADATA.XML files")
 
 
 def read_dataset_from_inner_directory(
-    data_dir: str | os.PathLike[Any],
+    data_dir: str | os.PathLike[Any], scale_reflectance: bool = True
 ) -> xr.Dataset:
     data_path = pathlib.Path(data_dir)
     LOGGER.info(f"Opening {data_path}")
@@ -106,6 +123,14 @@ def read_dataset_from_inner_directory(
         if quicklook_name in arrays.keys():
             ql = arrays.get(quicklook_name)
             arrays[quicklook_name] = ql.rename({"band": "quicklookband"})
+    if "reflectance" in arrays.keys() and scale_reflectance:
+        reflectance = arrays.get("reflectance")
+        fill_value = reflectance.attrs.get("_FillValue", -32768)
+        reflectance = reflectance.astype(dtype=np.float32)
+        reflectance = xr.where(
+            np.abs(reflectance - fill_value) > 1e-8, reflectance, np.nan
+        )
+        arrays["reflectance"] = reflectance / 10000
     ds = xr.Dataset(arrays)
     add_metadata(ds, data_path)
     ds = set_wavelengths_as_dimensions(ds, data_path)
