@@ -63,9 +63,21 @@ import xarray as xr
 
 enmap_dataset = xr.open_dataset(
     "/path/to/enmap/data/filename.tar.gz",
-    engine="enmap"
+    engine="enmap",
+    backend_kwargs={"scale_reflectance": False}
 )
 ```
+
+The optional `scale_reflectance` keyword argument controls whether the
+reflectance values are left as raw values or scaled to the range 0–1. When
+they are scaled, the special background value of −32768 in the raw data is
+also replaced with `NaN`. `scale_reflectance` is `True` by default, so you can
+simply omit it if you want the reflectances scaled.
+
+> ⚠️ Theoretically, the raw reflectance values in an EnMAP file should be
+> between 0 and 10000. In practice, some real-world EnMAP products contain
+> a few values outside this range, which will also result in values outside
+> the 0–1 range after scaling.
 
 The supplied path can reference:
 
@@ -79,6 +91,15 @@ The supplied path can reference:
 At present, if the archive or directory contains multiple EnMAP products,
 xarray-enmap will open only the first.
 
+In addition to the standard `band` index co-ordinate containing the band number,
+xarray-enmap creates an additional `wavelength` co-ordinate which can be used
+to index by the corresponding band's centre wavelength. So you can do things
+like
+
+`enmap_dataset.reflectance.sel(wavelength=slice(950, 1000))`
+
+to select data for a particular wavelength range.
+
 ## Usage of the command-line tool `convert-enmap`
 
 Note that, to use the `--zarr-output` option, you must install the appropriate
@@ -86,11 +107,11 @@ optional packages (see installation instructions).
 
 ```text
 usage: convert-enmap [-h] [--zarr-output ZARR_OUTPUT]
-                     [--tiff-output TIFF_OUTPUT] [--tempdir TEMPDIR]
-                     [--compress] [--verbose]
+                     [--tiff-output TIFF_OUTPUT] [--raw-reflectance]
+                     [--tempdir TEMPDIR] [--compress] [--verbose]
                      input_filename
 
-Extract data from EnMAP archives. The expected input is a Zip archive, or a
+Extract data from EnMAP archives. The expected input is an Zip archive, or a
 .tar.gz archive of multiple Zip archives, downloaded from the EnMAP portal.
 Output can be written as TIFF, Zarr, or both.
 
@@ -104,6 +125,9 @@ options:
                         Write Zarr output to this directory.
   --tiff-output TIFF_OUTPUT
                         Write TIFF output to this directory.
+  --raw-reflectance, -r
+                        Use raw reflectance values rather than rescaling to
+                        0-1 range.
   --tempdir, -t TEMPDIR
                         Use specified path as temporary directory, and don't
                         delete it afterwards (useful for debugging)

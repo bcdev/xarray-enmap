@@ -1,4 +1,4 @@
-# Copyright (c) 2025 by Brockmann Consult GmbH
+# Copyright (c) 2025-2026 by Brockmann Consult GmbH
 # Permissions are hereby granted under the terms of the MIT License:
 # https://opensource.org/licenses/MIT.
 
@@ -16,6 +16,7 @@ import xarray
 from . import xarray_enmap
 
 LOGGER = logging.getLogger(__name__)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -36,6 +37,12 @@ def main():
     )
     parser.add_argument(
         "--tiff-output", type=str, help="Write TIFF output to this directory."
+    )
+    parser.add_argument(
+        "--raw-reflectance",
+        "-r",
+        action="store_true",
+        help="Use raw reflectance values rather than rescaling to 0-1 range.",
     )
     parser.add_argument(
         "--tempdir",
@@ -60,6 +67,7 @@ def main():
     )
     parser.add_argument("--verbose", "-v", action="count", default=0)
     args = parser.parse_args()
+    scale_reflectance = not args.raw_reflectance
 
     def loglevel(verbosity):
         match verbosity:
@@ -82,6 +90,7 @@ def main():
                 temp_dir,
                 args.compress,
                 args.open_as_datatree
+                scale_reflectance,
             )
     else:
         temp_dir = os.path.expanduser(args.tempdir)
@@ -94,6 +103,7 @@ def main():
             args.compress,
             args.extract_only,
             args.open_as_datatree
+            scale_reflectance,
         )
 
 
@@ -104,15 +114,18 @@ def process(
     temp_dir: str,
     compress: bool = False,
     open_as_datatree: bool = False
+    scale_reflectance: bool = True,
 ):
     if output_dir_zarr is output_dir_tiff is None:
-        LOGGER.warn("No output destinations specified.")
-        LOGGER.warn(
+        LOGGER.warning("No output destinations specified.")
+        LOGGER.warning(
             "Archive will be extracted and opened but no data will be written."
         )
     input_path = pathlib.Path(input_filename)
     if input_path.is_file():
-        data_dirs = list(xarray_enmap.extract_archives(input_filename, temp_dir))
+        data_dirs = list(
+            xarray_enmap.extract_archives(input_filename, temp_dir)
+        )
     elif input_path.is_dir():
         metadata_files = list(input_path.glob("*METADATA.XML"))
         match len(metadata_files):
@@ -131,7 +144,7 @@ def process(
             f"{input_filename} is neither a file nor a directory."
         )
     if output_dir_zarr is not None and open_as_datatree:
-        write_datatree_as_zarr(input_path, data_dirs, output_dir_zarr, compress)
+        write_datatree_as_zarr(input_path, data_dirs, output_dir_zarr, compress, scale_reflectance)
     else:
         for data_dir in data_dirs:
             if output_dir_tiff is not None:
@@ -139,15 +152,24 @@ def process(
                     data_dir, pathlib.Path(output_dir_tiff) / data_dir.name
                 )
             if output_dir_zarr is not None:
-                write_zarr(data_dir, output_dir_zarr, compress)
+                write_zarr(data_dir, output_dir_zarr, compress, scale_reflectance)
 
 
 def write_zarr(
-    data_dir, output_dir: str, compress: bool = False
+    data_dir,
+    output_dir: str,
+    compress: bool = False,
+    scale_reflectance: bool = True,
 ):
     LOGGER.info(f"Writing {data_dir} to a Zarr archive...")
     ensure_module_importable("zarr")
-    ds = xarray_enmap.read_dataset_from_inner_directory(data_dir)
+    LOGGER.info(
+        f"Using {'scaled' if scale_reflectance else 'unscaled'} "
+        f"reflectance."
+    )
+    ds = xarray_enmap.read_dataset_from_inner_directory(
+        data_dir, scale_reflectance
+    )
     store_path = pathlib.Path(output_dir) / (data_dir.name + ".zarr")
     zarr_args = _get_zarr_args(compress, store_path)
     ds.to_zarr(**zarr_args)
@@ -181,6 +203,7 @@ def _get_zarr_args(compress: bool, store_path: str):
     if compress:
         ensure_module_importable("numcodecs")
         import numcodecs
+
         zarr_args["encoding"] = {
             "reflectance": {
                 "compressor": numcodecs.Blosc(

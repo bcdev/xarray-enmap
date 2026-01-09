@@ -1,4 +1,4 @@
-# Copyright (c) 2025 by Brockmann Consult GmbH
+# Copyright (c) 2025-2026 by Brockmann Consult GmbH
 # Permissions are hereby granted under the terms of the MIT License:
 # https://opensource.org/licenses/MIT.
 
@@ -7,6 +7,8 @@ from collections.abc import Iterable
 import logging
 import os
 import pathlib
+
+import numpy as np
 import rioxarray
 import shutil
 import tarfile
@@ -33,8 +35,11 @@ VAR_MAP = dict(
     haze="QL_QUALITY_HAZE",
     snow="QL_QUALITY_SNOW",
     testflags="QL_QUALITY_TESTFLAGS",
-    # We omit the quicklook files QL_SWIR and QL_VNIR.
+    swirquicklook="QL_SWIR",
+    vnirquicklook="QL_VNIR"
 )
+
+QUICKLOOK_VAR_NAMES = ["swirquicklook", "vnirquicklook"]
 
 
 class EnmapEntrypoint(xr.backends.BackendEntrypoint):
@@ -47,15 +52,22 @@ class EnmapEntrypoint(xr.backends.BackendEntrypoint):
         filename_or_obj: str | os.PathLike[Any],
         *,
         drop_variables: str | Iterable[str] | None = None,
+        scale_reflectance: bool = True,
     ) -> xr.Dataset:
         self.temp_dir = tempfile.mkdtemp(prefix="xarray-enmap-")
         path = pathlib.Path(filename_or_obj)
         if path.is_file():
-            ds = read_dataset_from_archive(filename_or_obj, self.temp_dir)
+            ds = read_dataset_from_archive(
+                filename_or_obj, self.temp_dir, scale_reflectance
+            )
         elif path.is_dir():
-            ds = read_dataset_from_unknown_directory(path, self.temp_dir)
+            ds = read_dataset_from_unknown_directory(
+                path, self.temp_dir, scale_reflectance
+            )
         elif filename_or_obj.startswith("s3://"):
-            ds = read_dataset_from_inner_directory(filename_or_obj)
+            ds = read_dataset_from_inner_directory(
+                filename_or_obj, scale_reflectance
+            )
         else:
             raise ValueError(
                 f"{filename_or_obj} is neither a path nor a directory."
@@ -97,39 +109,62 @@ class EnmapEntrypoint(xr.backends.BackendEntrypoint):
 
 
 def read_dataset_from_archive(
-    input_filename: str | os.PathLike[Any], temp_dir: str
+    input_filename: str | os.PathLike[Any],
+    temp_dir: str,
+    scale_reflectance: bool = True,
 ) -> xr.Dataset:
     data_dirs = list(extract_archives(input_filename, temp_dir))
     if len(data_dirs) > 1:
         LOGGER.warning("Multiple data archives found; reading the first.")
-    return read_dataset_from_inner_directory(data_dirs[0])
+    return read_dataset_from_inner_directory(data_dirs[0], scale_reflectance)
 
 
 def read_dataset_from_unknown_directory(
-    data_dir: str | os.PathLike[Any], temp_dir: str
+    data_dir: str | os.PathLike[Any],
+    temp_dir: str,
+    scale_reflectance: bool = True,
 ) -> xr.Dataset:
     data_path = pathlib.Path(data_dir)
     metadata_files = list(data_path.glob("*METADATA.XML"))
     match len(metadata_files):
         case 0:
             # assume outer directory
-            return read_dataset_from_archive(data_path, temp_dir)
+            return read_dataset_from_archive(
+                data_path, temp_dir, scale_reflectance
+            )
         case 1:
             # assume inner directory
-            return read_dataset_from_inner_directory(data_path)
+            return read_dataset_from_inner_directory(
+                data_path, scale_reflectance
+            )
         case _:
             raise RuntimeError("Too many METADATA.XML files")
 
 
-def read_dataset_from_inner_directory(data_dir: str | os.PathLike[Any]) -> xr.Dataset:
+def read_dataset_from_inner_directory(
+    data_dir: str | os.PathLike[Any], scale_reflectance: bool = True
+) -> xr.Dataset:
     data_path = pathlib.Path(data_dir)
     LOGGER.info(f"Opening {data_path}")
     arrays = {
         name: rioxarray.open_rasterio(filename).squeeze()
         for name, filename in find_datafiles(data_path).items()
     }
+    for quicklook_name in QUICKLOOK_VAR_NAMES:
+        if quicklook_name in arrays.keys():
+            ql = arrays.get(quicklook_name)
+            arrays[quicklook_name] = ql.rename({"band": "quicklookband"})
+    if "reflectance" in arrays.keys() and scale_reflectance:
+        reflectance = arrays.get("reflectance")
+        fill_value = reflectance.attrs.get("_FillValue", -32768)
+        reflectance = reflectance.astype(dtype=np.float32)
+        reflectance = xr.where(
+            np.abs(reflectance - fill_value) > 1e-8, reflectance, np.nan
+        )
+        arrays["reflectance"] = reflectance / 10000
     ds = xr.Dataset(arrays)
     add_metadata(ds, data_path)
+    ds = set_wavelengths_as_dimensions(ds, data_path)
     return ds
 
 
@@ -175,18 +210,27 @@ def find_datafiles(data_path: pathlib.Path) -> Mapping[str, pathlib.Path]:
     return result
 
 
-def add_metadata(ds: xr.Dataset, data_dir: pathlib.Path):
-    metadata_paths = list(data_dir.glob("*METADATA.XML"))
-    assert len(metadata_paths) == 1
-    metadata_path = metadata_paths[0]
-    if str(data_dir).startswith("s3://"):
-        import fsspec
+def set_wavelengths_as_dimensions(
+    ds: xr.Dataset, data_dir: pathlib.Path
+) -> xr.Dataset:
+    root = _open_metadata_root(data_dir)
+    bandids = root.findall("specific/bandCharacterisation/bandID")
+    if len(bandids) != len(ds.band):
+        LOGGER.info(
+            "Cannot retrieve wavelengths for all bands: omitting 'wavelength' co-ordinate."
+        )
+        return ds
+    wavelengths = [
+        float(b.find("wavelengthCenterOfBand").text) for b in bandids
+    ]
+    ds = ds.assign_coords(wavelength=("band", wavelengths)).set_xindex(
+        "wavelength"
+    )
+    return ds
 
-        fs = fsspec.filesystem("s3")
-        with fs.open(metadata_path) as fh:
-            root = xml.etree.ElementTree.parse(fh).getroot()
-    else:
-        root = xml.etree.ElementTree.parse(metadata_path).getroot()
+
+def add_metadata(ds: xr.Dataset, data_dir: pathlib.Path):
+    root = _open_metadata_root(data_dir)
     points = root.findall("base/spatialCoverage/boundingPolygon/point")
     bounds = shapely.Polygon(
         [float(p.find("longitude").text), p.find("latitude").text]
@@ -270,6 +314,23 @@ def add_metadata(ds: xr.Dataset, data_dir: pathlib.Path):
         if len(values) > 4:
             attrs.update(values[4])
         ds[var].attrs.update(attrs)
+
+
+def _open_metadata_root(
+    data_dir: pathlib.Path,
+) -> xml.etree.ElementTree.Element:
+    metadata_paths = list(data_dir.glob("*METADATA.XML"))
+    assert len(metadata_paths) == 1
+    metadata_path = metadata_paths[0]
+    if str(data_dir).startswith("s3://"):
+        import fsspec
+
+        fs = fsspec.filesystem("s3")
+        with fs.open(metadata_path) as fh:
+            root = xml.etree.ElementTree.parse(fh).getroot()
+    else:
+        root = xml.etree.ElementTree.parse(metadata_path).getroot()
+    return root
 
 
 def extract_archives(
