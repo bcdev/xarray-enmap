@@ -143,7 +143,7 @@ def process(
 
 
 def write_zarr(
-    data_dir, output_dir: str, compress: bool = False, open_as_datatree: bool = False
+    data_dir, output_dir: str, compress: bool = False
 ):
     LOGGER.info(f"Writing {data_dir} to a Zarr archive...")
     ensure_module_importable("zarr")
