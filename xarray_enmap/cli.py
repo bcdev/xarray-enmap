@@ -52,7 +52,7 @@ def main():
         "Compression process (but not decompression) is much slower.",
     )
     parser.add_argument(
-        "--open-as-datatree",
+        "--datatree",
         "-oad",
         action="store_true",
         help="Whether to write the data as datatree. This parameter is only considered when"
