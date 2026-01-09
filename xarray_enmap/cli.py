@@ -154,7 +154,7 @@ def write_zarr(
 
 
 def write_datatree_as_zarr(
-    input_path, data_dirs, output_dir: str, compress: bool = False
+    input_path: pathlib.Path, data_dirs: Iterable[pathlib.Path | str], output_dir: str, compress: bool = False
 ):
     name = input_path.name
     LOGGER.info(f"Writing {name} to a Zarr archive...")
