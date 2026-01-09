@@ -131,7 +131,6 @@ def set_wavelengths_as_dimensions(
     wavelengths = [
         float(b.find("wavelengthCenterOfBand").text) for b in bandids
     ]
-    # ds = ds.rename({"band": "wavelength"})
     ds = ds.assign_coords(wavelength=("band", wavelengths)).set_xindex(
         "wavelength"
     )
