@@ -99,10 +99,10 @@ def main():
         os.mkdir(temp_dir)
         process(
             args.input_filename,
-            os.path.expanduser(args.output_dir),
+            args.zarr_output,
+            args.tiff_output,
             temp_dir,
             args.compress,
-            args.extract_only,
             args.datatree,
             scale_reflectance,
         )
