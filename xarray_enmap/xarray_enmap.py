@@ -36,7 +36,7 @@ VAR_MAP = dict(
     snow="QL_QUALITY_SNOW",
     testflags="QL_QUALITY_TESTFLAGS",
     swirquicklook="QL_SWIR",
-    vnirquicklook="QL_VNIR"
+    vnirquicklook="QL_VNIR",
 )
 
 QUICKLOOK_VAR_NAMES = ["swirquicklook", "vnirquicklook"]
@@ -81,7 +81,9 @@ class EnmapEntrypoint(xr.backends.BackendEntrypoint):
         *,
         drop_variables: str | Iterable[str] | None = None,
     ) -> DataTree:
-        groups = self.open_groups_as_dict(filename_or_obj, drop_variables=drop_variables)
+        groups = self.open_groups_as_dict(
+            filename_or_obj, drop_variables=drop_variables
+        )
         dt = xarray.DataTree.from_dict(data=groups)
         return dt
 
@@ -190,9 +192,7 @@ def read_groups_from_unknown_directory(
             return read_groups_from_archive(data_path, temp_dir)
         case 1:
             # assume inner directory
-            return dict(
-                data_path=read_dataset_from_inner_directory(data_path)
-            )
+            return dict(data_path=read_dataset_from_inner_directory(data_path))
         case _:
             raise RuntimeError("Too many METADATA.XML files")
 

@@ -64,7 +64,7 @@ def main():
         "-d",
         action="store_true",
         help="Whether to write the data as datatree. This parameter is only considered when "
-             "the parameter zarr-output is given.",
+        "the parameter zarr-output is given.",
     )
     parser.add_argument("--verbose", "-v", action="count", default=0)
     args = parser.parse_args()
@@ -145,7 +145,9 @@ def process(
             f"{input_filename} is neither a file nor a directory."
         )
     if output_dir_zarr is not None and open_as_datatree:
-        write_datatree_as_zarr(input_path, data_dirs, output_dir_zarr, compress, scale_reflectance)
+        write_datatree_as_zarr(
+            input_path, data_dirs, output_dir_zarr, compress, scale_reflectance
+        )
     else:
         for data_dir in data_dirs:
             if output_dir_tiff is not None:
@@ -153,7 +155,9 @@ def process(
                     data_dir, pathlib.Path(output_dir_tiff) / data_dir.name
                 )
             if output_dir_zarr is not None:
-                write_zarr(data_dir, output_dir_zarr, compress, scale_reflectance)
+                write_zarr(
+                    data_dir, output_dir_zarr, compress, scale_reflectance
+                )
 
 
 def write_zarr(
@@ -178,10 +182,10 @@ def write_zarr(
 
 def write_datatree_as_zarr(
     input_path: pathlib.Path,
-        data_dirs: Iterable[pathlib.Path | str],
-        output_dir: str,
-        compress: bool = False,
-        scale_reflectance: bool = True
+    data_dirs: Iterable[pathlib.Path | str],
+    output_dir: str,
+    compress: bool = False,
+    scale_reflectance: bool = True,
 ):
     name = input_path.name
     LOGGER.info(f"Writing {name} to a Zarr archive...")
@@ -207,10 +211,7 @@ def write_datatree_as_zarr(
 
 
 def _get_zarr_args(compress: bool, store_path: str):
-    zarr_args = {
-        "zarr_format": 2,
-        "store": store_path
-    }
+    zarr_args = {"zarr_format": 2, "store": store_path}
     if compress:
         ensure_module_importable("numcodecs")
         import numcodecs
