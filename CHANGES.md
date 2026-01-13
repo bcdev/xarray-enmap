@@ -1,6 +1,7 @@
 ## Changes in 0.0.3 (under development)
 
 - Add the command-line conversion tool convert-enmap (#9)
+- Added support for backend methods `open_datatree` and `open_groups_as_dict` (#2)
 - Scale reflectance and handle nodata in reader (#8)
 - Include band center wavelengths in data and/or metadata (#6)
 - Include quicklook data (#7)
