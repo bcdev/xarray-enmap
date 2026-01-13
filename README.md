@@ -13,9 +13,9 @@ or
 
 `conda install xarray-enmap`
 
-> ⚠️ Starting with release 0.0.3, xarray-enmap will include the command-line
-> tool `convert-enmap`. If you wish to use `convert-enmap`, you should also
-> install the optional packages `zarr` and `numcodecs`.
+> ⚠️ Starting with release 0.0.3, xarray-enmap includes the command-line tool
+> `convert-enmap`. If you wish to use `convert-enmap`, you should also install
+> the optional packages `zarr` and `numcodecs`.
 
 ### With pip
 
@@ -108,7 +108,7 @@ optional packages (see installation instructions).
 ```text
 usage: convert-enmap [-h] [--zarr-output ZARR_OUTPUT]
                      [--tiff-output TIFF_OUTPUT] [--raw-reflectance]
-                     [--tempdir TEMPDIR] [--compress] [--verbose]
+                     [--tempdir TEMPDIR] [--compress] [--datatree] [--verbose]
                      input_filename
 
 Extract data from EnMAP archives. The expected input is an Zip archive, or a
@@ -134,5 +134,13 @@ options:
   --compress, -c        Higher Zarr output compression. ~25% smaller than
                         default compression. Compression process (but not
                         decompression) is much slower.
+  --datatree, -d        Whether to write the data as datatree. This parameter
+                        is only considered when the parameter zarr-output is
+                        given.
   --verbose, -v
 ```
+
+> ⚠️ The `--zarr-output` and `--tiff-output` arguments specify the *parent*
+> directory for any output files. So e.g. specifying `--zarr-output myzarrs`
+> will not produce a Zarr called "myzarrs", but a directory called "myzarrs"
+> which contains one or more Zarr archives as subdirectories.
