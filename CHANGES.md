@@ -1,3 +1,5 @@
+## Changes in 0.0.4 (in development)
+
 ## Changes in 0.0.3
 
 - Add the command-line conversion tool convert-enmap (#9)
