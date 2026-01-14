@@ -63,11 +63,11 @@ zarr = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/xcube-dev/xarray_enmap/blob/main/README.md"
-Issues = "https://github.com/xcube-dev/xarray_enmap/issues"
-Changelog = "https://github.com/xcube-dev/xarray_enmap/blob/main/CHANGES.md"
-Repository = "https://github.com/xcube-dev/xarray_enmap"
-Homepage = "https://github.com/xcube-dev/xarray_enmap"
+Documentation = "https://github.com/bcdev/xarray-enmap/blob/main/README.md"
+Issues = "https://github.com/bcdev/xarray-enmap/issues"
+Changelog = "https://github.com/bcdev/xarray-enmap/blob/main/CHANGES.md"
+Repository = "https://github.com/bcdev/xarray-enmap"
+Homepage = "https://github.com/bcdev/xarray-enmap"
 
 [project.entry-points."xarray.backends"]
 enmap = "xarray_enmap.xarray_enmap:EnmapEntrypoint"
